@@ -231,12 +231,12 @@ class BacktestEngine:
         # Trade statistics
         trades_df = pd.DataFrame(self.trades)
 
-        if not trades_df.empty:
-            profit_trades = trades_df[trades_df.get('profit', 0) > 0]
+        if not trades_df.empty and 'profit' in trades_df.columns:
+            profit_trades = trades_df[trades_df['profit'] > 0]
             win_rate = len(profit_trades) / len(trades_df[trades_df['action'] == 'sell'])
 
             avg_profit = profit_trades['profit'].mean() if len(profit_trades) > 0 else 0
-            loss_trades = trades_df[trades_df.get('profit', 0) < 0]
+            loss_trades = trades_df[trades_df['profit'] < 0]
             avg_loss = loss_trades['profit'].mean() if len(loss_trades) > 0 else 0
 
             profit_factor = (profit_trades['profit'].sum() /
