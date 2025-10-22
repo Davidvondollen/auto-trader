@@ -48,15 +48,15 @@ venv.bak/
 logs/
 *.log
 
-# Data
-data/
+# Data files
+/data/
 *.csv
 *.h5
 *.pkl
 *.pickle
 
-# Models
-models/
+# Model files
+/models/
 *.zip
 *.pth
 *.pt

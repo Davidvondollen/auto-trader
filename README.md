@@ -140,6 +140,23 @@ system.run()
 
 Press `Ctrl+C` to stop the system gracefully.
 
+### 5. Launch Web Dashboard (NEW in Phase 2)
+
+```bash
+# Start the Streamlit dashboard
+python run_dashboard.py
+
+# Or directly with Streamlit
+streamlit run src/visualization/dashboard.py
+```
+
+The dashboard will open at `http://localhost:8501` and provides:
+- Real-time portfolio monitoring
+- Performance analytics with charts
+- Strategy management interface
+- News & sentiment analysis
+- Risk monitoring tools
+
 ## Project Structure
 
 ```
@@ -156,9 +173,12 @@ auto-trader/
 │   │   └── llm_strategy_generator.py # LLM-based strategy generation
 │   ├── execution/
 │   │   ├── broker.py                # Broker integrations
-│   │   └── portfolio_optimizer.py   # Portfolio optimization & risk
+│   │   ├── portfolio_optimizer.py   # Portfolio optimization & risk
+│   │   └── safety.py                # Live trading safety monitor (NEW)
 │   ├── backtesting/
 │   │   └── backtest_engine.py       # Backtesting framework
+│   ├── visualization/
+│   │   └── dashboard.py             # Streamlit web dashboard (NEW)
 │   ├── utils/
 │   │   └── config_loader.py         # Configuration management
 │   └── trading_system.py            # Main orchestrator
@@ -168,6 +188,8 @@ auto-trader/
 │   ├── simple_backtest.py           # Backtest example
 │   └── generate_strategy.py         # Strategy generation example
 ├── tests/                           # Unit tests
+├── run_dashboard.py                 # Dashboard launcher (NEW)
+├── PHASE_2_SUMMARY.md              # Phase 2 documentation (NEW)
 ├── .env.example                     # Environment variables template
 ├── requirements.txt                 # Python dependencies
 └── README.md                        # This file
@@ -510,11 +532,26 @@ Contributions welcome! Please:
 - ✅ Backtesting framework
 - ✅ Paper trading
 
-### Phase 2 (In Progress)
-- 🔄 Live trading integration
-- 🔄 Advanced RL strategies
-- 🔄 Multi-timeframe analysis
-- 🔄 Web dashboard
+### Phase 2 (Complete)
+- ✅ Live trading integration
+  - Safety monitoring with circuit breakers
+  - Manual confirmation for live trades
+  - Position and daily loss limits
+- ✅ Advanced RL strategies
+  - PPO, SAC, TD3, A2C algorithms
+  - Gym-compatible trading environment
+  - Model training and evaluation
+- ✅ Multi-timeframe analysis
+  - Technical indicators across timeframes
+  - Ensemble price prediction (XGBoost, Prophet)
+  - News sentiment analysis with FinBERT
+- ✅ Web dashboard
+  - Real-time portfolio monitoring
+  - Performance analytics
+  - Strategy management
+  - Risk visualization
+
+See `PHASE_2_SUMMARY.md` for detailed documentation.
 
 ### Phase 3 (Planned)
 - 📋 Options trading
