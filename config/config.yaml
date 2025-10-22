@@ -1,0 +1,89 @@
+system:
+  mode: paper  # paper, live
+  initial_capital: 100000
+  execution_interval: 300  # seconds
+  log_level: INFO
+
+assets:
+  symbols:
+    - AAPL
+    - GOOGL
+    - MSFT
+    - TSLA
+  crypto:
+    - BTC/USDT
+    - ETH/USDT
+  timeframes:
+    - 1h
+    - 4h
+    - 1d
+
+data_sources:
+  technical:
+    primary: yfinance
+    lookback_periods: 500
+  news:
+    sources:
+      - newsapi
+    lookback_hours: 24
+
+brokers:
+  default: alpaca
+  alpaca:
+    paper: true
+    paper_key_env: ALPACA_PAPER_KEY
+    paper_secret_env: ALPACA_PAPER_SECRET
+    live_key_env: ALPACA_LIVE_KEY
+    live_secret_env: ALPACA_LIVE_SECRET
+
+strategies:
+  llm:
+    provider: anthropic  # or openai
+    model: claude-sonnet-4-5
+    api_key_env: ANTHROPIC_API_KEY
+    temperature: 0.7
+    max_strategies: 5
+    evolution_frequency: 86400  # seconds (daily)
+  rl:
+    algorithm: PPO
+    training_timesteps: 1000000
+    policy: MlpPolicy
+
+portfolio:
+  optimization_method: max_sharpe  # max_sharpe, min_volatility, efficient_risk
+  rebalance_frequency: daily
+  max_position_size: 0.2
+  min_position_size: 0.01
+
+risk:
+  max_drawdown: 0.15
+  stop_loss_pct: 0.05
+  var_confidence: 0.95
+  max_portfolio_var: 0.05
+  max_correlation: 0.7
+
+prediction:
+  models:
+    - lstm
+    - xgboost
+    - prophet
+  horizons:
+    - 1h
+    - 4h
+    - 1d
+
+backtesting:
+  commission: 0.001
+  slippage: 0.0005
+  initial_cash: 100000
+
+visualization:
+  dashboard_port: 8501
+  update_interval: 60
+  enable_plots: true
+
+monitoring:
+  enable_alerts: true
+  alert_on_loss_pct: 0.05
+  alert_on_error: true
+  performance_log_interval: 3600  # seconds
