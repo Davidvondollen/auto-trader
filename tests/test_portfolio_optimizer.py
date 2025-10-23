@@ -251,12 +251,12 @@ class TestRiskManager:
 
     def test_apply_constraints(self, sample_portfolio):
         """Test applying risk constraints."""
-        risk_mgr = RiskManager(max_position_size=0.2)
+        risk_mgr = RiskManager(max_position_size=0.4)
 
         proposed = {
             'AAPL': 0.50,  # Should be capped
-            'GOOGL': 0.30,  # Should be capped
-            'MSFT': 0.20   # OK
+            'GOOGL': 0.30,
+            'MSFT': 0.20
         }
 
         adjusted = risk_mgr.apply_constraints(proposed)
@@ -266,7 +266,7 @@ class TestRiskManager:
         assert all(w <= risk_mgr.max_position_size for w in adjusted.values())
 
         # Weights should still sum to approximately 1
-        assert 0.95 <= sum(adjusted.values()) <= 1.05
+        assert np.isclose(sum(adjusted.values()), 1.0)
 
     def test_apply_constraints_renormalization(self):
         """Test constraint application renormalizes weights."""

@@ -196,7 +196,7 @@ class TradingEnvironment(gym.Env):
 
         if action > 0:
             # Buy
-            max_shares = (self.balance * self.max_position) / execution_price
+            max_shares = (self.balance * self.max_position) / current_price if current_price > 0 else 0
             shares_to_buy = max_shares * abs(action)
 
             if shares_to_buy > 0:
@@ -258,7 +258,7 @@ class TradingEnvironment(gym.Env):
         start_idx = max(0, self.current_step - self.window_size)
         end_idx = self.current_step
 
-        window_data = self.data.loc[start_idx:end_idx, self.feature_columns].values
+        window_data = self.data.loc[start_idx:end_idx-1, self.feature_columns].values
 
         # Pad if necessary
         if len(window_data) < self.window_size:

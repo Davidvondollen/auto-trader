@@ -21,7 +21,7 @@ class TestTechnicalIndicatorEngine:
         assert engine.symbols == ['AAPL', 'GOOGL']
         assert engine.timeframes == ['1h', '1d']
         assert isinstance(engine.data_cache, dict)
-        assert isinstance(engine.last_update, dict)
+        assert isinstance(engine.last_fetch, dict)
 
     @patch('yfinance.Ticker')
     def test_fetch_data_yfinance(self, mock_ticker, sample_ohlcv_data):
@@ -32,7 +32,7 @@ class TestTechnicalIndicatorEngine:
         mock_ticker.return_value = mock_instance
 
         engine = TechnicalIndicatorEngine(['AAPL'], ['1d'])
-        df = engine.fetch_data('AAPL', '1d', lookback=100, source='yfinance')
+        df = engine.fetch_data('AAPL', '1d', lookback=100)
 
         assert_valid_dataframe(df, ['open', 'high', 'low', 'close', 'volume'])
         assert len(df) > 0
@@ -42,7 +42,7 @@ class TestTechnicalIndicatorEngine:
         engine = TechnicalIndicatorEngine(['AAPL'], ['1d'])
 
         # Mock the fetch method
-        with patch.object(engine, '_fetch_yfinance', return_value=sample_ohlcv_data):
+        with patch.object(engine, '_fetch_stock', return_value=sample_ohlcv_data):
             # First fetch
             df1 = engine.fetch_data('AAPL', '1d', lookback=100)
 
@@ -50,7 +50,7 @@ class TestTechnicalIndicatorEngine:
             df2 = engine.fetch_data('AAPL', '1d', lookback=100)
 
             assert df1.equals(df2)
-            assert 'AAPL_1d_yfinance' in engine.data_cache
+            assert 'AAPL_1d' in engine.data_cache
 
     def test_calculate_indicators(self, sample_ohlcv_data):
         """Test calculating technical indicators."""

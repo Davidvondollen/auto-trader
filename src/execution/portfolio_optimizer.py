@@ -478,16 +478,41 @@ class RiskManager:
         """
         adjusted = proposed_allocation.copy()
 
-        # Enforce max position size
-        for symbol, weight in adjusted.items():
-            if weight > self.max_position_size:
-                logger.info(f"Capping {symbol} position from {weight:.2%} to {self.max_position_size:.2%}")
+        # Iteratively apply constraints
+        for _ in range(10):  # Max 10 iterations to prevent infinite loops
+            over_limit_symbols = {s for s, w in adjusted.items() if w > self.max_position_size}
+
+            if not over_limit_symbols:
+                break
+
+            # Cap oversized positions
+            for symbol in over_limit_symbols:
                 adjusted[symbol] = self.max_position_size
 
-        # Renormalize
-        total = sum(adjusted.values())
-        if total > 0:
-            adjusted = {k: v / total for k, v in adjusted.items()}
+            # Renormalize weights for other positions
+            capped_weight = sum(adjusted[s] for s in over_limit_symbols)
+
+            under_limit_symbols = [s for s in adjusted if s not in over_limit_symbols]
+
+            if not under_limit_symbols:
+                # Handle case where all positions are capped
+                total_weight = sum(adjusted.values())
+                if total_weight > 0:
+                    adjusted = {k: v / total_weight for k, v in adjusted.items()}
+                break
+
+            total_under_limit_weight = sum(adjusted[s] for s in under_limit_symbols)
+
+            # Amount to redistribute
+            scale = (1.0 - capped_weight) / total_under_limit_weight if total_under_limit_weight > 0 else 0
+
+            for symbol in under_limit_symbols:
+                adjusted[symbol] *= scale
+
+        # Final renormalization to fix floating point inaccuracies
+        total_weight = sum(adjusted.values())
+        if total_weight > 0 and not np.isclose(total_weight, 1.0):
+            adjusted = {k: v / total_weight for k, v in adjusted.items()}
 
         return adjusted
 
