@@ -1,10 +1,10 @@
 """
 Reinforcement Learning Trading Environment
-Gym-compatible environment for training RL agents.
+Gymnasium-compatible environment for training RL agents.
 """
 
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
@@ -13,7 +13,7 @@ from loguru import logger
 
 class TradingEnvironment(gym.Env):
     """
-    Gym-compatible trading environment for RL agents.
+    Gymnasium-compatible trading environment for RL agents.
 
     Observation space: Market data window (OHLCV + indicators)
     Action space: Continuous [-1, 1] where:
@@ -91,13 +91,19 @@ class TradingEnvironment(gym.Env):
         logger.info(f"TradingEnvironment initialized with {len(data)} steps, "
                    f"window_size={window_size}, features={n_features}")
 
-    def reset(self) -> np.ndarray:
+    def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[np.ndarray, Dict]:
         """
         Reset environment to initial state.
 
+        Args:
+            seed: Random seed for reproducibility
+            options: Additional options
+
         Returns:
-            Initial observation
+            Initial observation and info dict
         """
+        super().reset(seed=seed)
+
         self.current_step = self.window_size
         self.balance = self.initial_balance
         self.shares_held = 0.0
@@ -106,9 +112,12 @@ class TradingEnvironment(gym.Env):
         self.portfolio_history = []
         self.trade_history = []
 
-        return self._get_observation()
+        observation = self._get_observation()
+        info = self._get_info()
 
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, Dict]:
+        return observation, info
+
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         """
         Execute one step in the environment.
 
@@ -116,7 +125,7 @@ class TradingEnvironment(gym.Env):
             action: Action to take (continuous value in [-1, 1])
 
         Returns:
-            observation, reward, done, info
+            observation, reward, terminated, truncated, info
         """
         # Ensure action is scalar
         if isinstance(action, np.ndarray):
@@ -143,8 +152,9 @@ class TradingEnvironment(gym.Env):
             'price': current_price
         })
 
-        # Check if done
-        done = self.current_step >= len(self.data) - 1
+        # Check if terminated (end of data)
+        terminated = self.current_step >= len(self.data) - 1
+        truncated = False  # We don't truncate episodes
 
         # Get observation
         observation = self._get_observation()
@@ -158,7 +168,7 @@ class TradingEnvironment(gym.Env):
             'current_price': current_price
         }
 
-        return observation, reward, done, info
+        return observation, reward, terminated, truncated, info
 
     def _execute_trade(self, action: float, current_price: float) -> float:
         """
@@ -302,6 +312,27 @@ class TradingEnvironment(gym.Env):
 
         return normalized
 
+    def _get_info(self) -> Dict:
+        """
+        Get info dictionary with current state.
+
+        Returns:
+            Info dictionary
+        """
+        current_price = self.data.loc[self.current_step, 'close'] if self.current_step < len(self.data) else 0
+        portfolio_value = self.balance + (self.shares_held * current_price)
+        return_pct = ((portfolio_value - self.initial_balance) / self.initial_balance) * 100 if self.initial_balance > 0 else 0
+
+        return {
+            'step': self.current_step,
+            'balance': self.balance,
+            'shares_held': self.shares_held,
+            'portfolio_value': portfolio_value,
+            'return': return_pct,
+            'current_price': current_price,
+            'total_trades': self.total_trades
+        }
+
     def render(self, mode: str = 'human') -> None:
         """
         Render environment state.
@@ -357,19 +388,20 @@ if __name__ == "__main__":
     print(f"Action space: {env.action_space.shape}")
 
     # Run random episode
-    obs = env.reset()
-    done = False
+    obs, info = env.reset()
+    terminated = False
+    truncated = False
     total_reward = 0
 
     for i in range(50):
         action = env.action_space.sample()
-        obs, reward, done, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         total_reward += reward
 
         if i % 10 == 0:
             env.render()
 
-        if done:
+        if terminated or truncated:
             break
 
     print(f"\nEpisode finished!")
