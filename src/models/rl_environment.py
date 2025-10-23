@@ -258,7 +258,8 @@ class TradingEnvironment(gym.Env):
         start_idx = max(0, self.current_step - self.window_size)
         end_idx = self.current_step
 
-        window_data = self.data.loc[start_idx:end_idx, self.feature_columns].values
+        # Use iloc for half-open interval [start_idx, end_idx) to get exactly window_size rows
+        window_data = self.data.iloc[start_idx:end_idx][self.feature_columns].values
 
         # Pad if necessary
         if len(window_data) < self.window_size:
