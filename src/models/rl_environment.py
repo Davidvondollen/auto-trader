@@ -196,7 +196,7 @@ class TradingEnvironment(gym.Env):
 
         if action > 0:
             # Buy
-            max_shares = (self.balance * self.max_position) / execution_price
+            max_shares = (self.balance * self.max_position) / current_price if current_price > 0 else 0
             shares_to_buy = max_shares * abs(action)
 
             if shares_to_buy > 0:
