@@ -29,7 +29,7 @@ class TechnicalIndicatorEngine:
         self.symbols = symbols
         self.timeframes = timeframes
         self.data_cache = {}
-        self.last_fetch = {}
+        self.last_update = {}
 
         # Initialize crypto exchange for crypto symbols
         self.crypto_exchange = None
@@ -43,7 +43,8 @@ class TechnicalIndicatorEngine:
         self,
         symbol: str,
         timeframe: str,
-        lookback: int = 500
+        lookback: int = 500,
+        source: str = 'yfinance'
     ) -> pd.DataFrame:
         """
         Fetch OHLCV data for a symbol and timeframe.
@@ -52,15 +53,16 @@ class TechnicalIndicatorEngine:
             symbol: Symbol to fetch
             timeframe: Timeframe (1h, 4h, 1d, etc.)
             lookback: Number of bars to fetch
+            source: Data source ('yfinance' for stocks, 'crypto' for crypto)
 
         Returns:
             DataFrame with OHLCV data
         """
-        cache_key = f"{symbol}_{timeframe}"
+        cache_key = f"{symbol}_{timeframe}_{source}"
 
         # Check cache (refresh if older than timeframe interval)
         if cache_key in self.data_cache:
-            last_fetch = self.last_fetch.get(cache_key, datetime.min)
+            last_fetch = self.last_update.get(cache_key, datetime.min)
             interval_seconds = self._timeframe_to_seconds(timeframe)
 
             if (datetime.now() - last_fetch).total_seconds() < interval_seconds / 2:
@@ -68,15 +70,15 @@ class TechnicalIndicatorEngine:
                 return self.data_cache[cache_key].copy()
 
         try:
-            # Determine if crypto or stock
-            if '/' in symbol:
+            # Determine if crypto or stock based on source parameter or symbol format
+            if source == 'crypto' or '/' in symbol:
                 df = self._fetch_crypto(symbol, timeframe, lookback)
             else:
                 df = self._fetch_stock(symbol, timeframe, lookback)
 
             if df is not None and not df.empty:
                 self.data_cache[cache_key] = df
-                self.last_fetch[cache_key] = datetime.now()
+                self.last_update[cache_key] = datetime.now()
                 logger.info(f"Fetched {len(df)} bars for {cache_key}")
                 return df.copy()
             else:

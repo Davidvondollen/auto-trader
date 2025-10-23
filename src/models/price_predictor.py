@@ -29,6 +29,199 @@ except ImportError:
     logger.warning("Prophet not available")
 
 
+class FeatureEngineer:
+    """Feature engineering for price prediction models."""
+
+    def create_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create features for model training.
+
+        Args:
+            df: DataFrame with OHLCV data
+
+        Returns:
+            DataFrame with engineered features
+        """
+        features = df.copy()
+
+        # Price-based features
+        features['returns'] = features['close'].pct_change()
+        features['log_returns'] = np.log(features['close'] / features['close'].shift(1))
+
+        # Moving averages
+        for window in [5, 10, 20, 50]:
+            features[f'sma_{window}'] = features['close'].rolling(window=window).mean()
+
+        # Volatility features
+        features['volatility'] = features['returns'].rolling(window=20).std()
+
+        # Volume features
+        if 'volume' in features.columns:
+            features['volume_change'] = features['volume'].pct_change()
+            features['volume_ma'] = features['volume'].rolling(window=20).mean()
+
+        # Lagged features
+        for lag in [1, 2, 3, 5, 10]:
+            features[f'close_lag_{lag}'] = features['close'].shift(lag)
+            features[f'returns_lag_{lag}'] = features['returns'].shift(lag)
+
+        # Drop NaN values
+        features = features.dropna()
+
+        return features
+
+    def prepare_sequences(self, data: np.ndarray, sequence_length: int = 10):
+        """
+        Prepare sequences for LSTM-style models.
+
+        Args:
+            data: Input data array
+            sequence_length: Length of sequences
+
+        Returns:
+            Tuple of (X, y) sequences
+        """
+        X, y = [], []
+
+        for i in range(len(data) - sequence_length):
+            X.append(data[i:i + sequence_length])
+            y.append(data[i + sequence_length, 0])  # Predict first column
+
+        return np.array(X), np.array(y)
+
+
+class XGBoostPredictor:
+    """XGBoost-based price predictor."""
+
+    def __init__(self):
+        """Initialize XGBoost predictor."""
+        self.model = None
+        self.is_trained = False
+        self.scaler = StandardScaler()
+        self.feature_columns = []
+
+    def train(self, features: pd.DataFrame, target_col: str = 'close', horizon: int = 1):
+        """
+        Train XGBoost model.
+
+        Args:
+            features: DataFrame with features
+            target_col: Target column name
+            horizon: Prediction horizon
+        """
+        if not HAS_XGBOOST:
+            raise ImportError("XGBoost not available")
+
+        # Prepare features and target
+        self.feature_columns = [col for col in features.columns
+                               if col not in ['open', 'high', 'low', 'close', 'volume']]
+
+        X = features[self.feature_columns].values
+        y = features[target_col].values
+
+        # Scale features
+        X_scaled = self.scaler.fit_transform(X)
+
+        # Train model
+        self.model = xgb.XGBRegressor(
+            n_estimators=100,
+            max_depth=5,
+            learning_rate=0.1,
+            random_state=42
+        )
+        self.model.fit(X_scaled, y)
+        self.is_trained = True
+
+    def predict(self, features: pd.DataFrame) -> float:
+        """
+        Make prediction.
+
+        Args:
+            features: DataFrame with features
+
+        Returns:
+            Predicted price
+        """
+        if not self.is_trained:
+            raise ValueError("Model must be trained first")
+
+        X = features[self.feature_columns].iloc[-1:].values
+        X_scaled = self.scaler.transform(X)
+
+        prediction = self.model.predict(X_scaled)[0]
+        return float(prediction)
+
+    def get_feature_importance(self) -> pd.DataFrame:
+        """
+        Get feature importance.
+
+        Returns:
+            DataFrame with feature importances
+        """
+        if not self.is_trained:
+            return pd.DataFrame()
+
+        importance = self.model.feature_importances_
+        return pd.DataFrame({
+            'feature': self.feature_columns,
+            'importance': importance
+        }).sort_values('importance', ascending=False)
+
+
+class ProphetPredictor:
+    """Prophet-based price predictor."""
+
+    def __init__(self):
+        """Initialize Prophet predictor."""
+        self.model = None
+        self.is_trained = False
+
+    def train(self, df: pd.DataFrame, target_col: str = 'close'):
+        """
+        Train Prophet model.
+
+        Args:
+            df: DataFrame with time series data
+            target_col: Target column name
+        """
+        if not HAS_PROPHET:
+            raise ImportError("Prophet not available")
+
+        # Prepare data for Prophet
+        prophet_df = pd.DataFrame({
+            'ds': df.index,
+            'y': df[target_col].values
+        })
+
+        # Train model
+        self.model = Prophet(
+            daily_seasonality=True,
+            weekly_seasonality=True,
+            yearly_seasonality=False,
+            changepoint_prior_scale=0.05
+        )
+        self.model.fit(prophet_df)
+        self.is_trained = True
+
+    def predict(self, periods: int = 1) -> pd.DataFrame:
+        """
+        Make prediction.
+
+        Args:
+            periods: Number of periods to forecast
+
+        Returns:
+            DataFrame with forecast
+        """
+        if not self.is_trained:
+            raise ValueError("Model must be trained first")
+
+        future = self.model.make_future_dataframe(periods=periods)
+        forecast = self.model.predict(future)
+
+        return forecast.tail(periods)
+
+
 class PricePredictionEngine:
     """
     Ensemble price prediction using multiple models.
@@ -44,8 +237,15 @@ class PricePredictionEngine:
         """
         self.models = models
         self.trained_models = {}
+        self.predictors = {}  # For compatibility with tests
         self.scalers = {}
         self.feature_columns = []
+
+        # Initialize predictor instances
+        if 'xgboost' in models:
+            self.predictors['xgboost'] = XGBoostPredictor()
+        if 'prophet' in models:
+            self.predictors['prophet'] = ProphetPredictor()
 
         logger.info(f"Initialized PricePredictionEngine with models: {models}")
 
@@ -251,6 +451,12 @@ class PricePredictionEngine:
         weights = np.array(weights) / sum(weights)
         ensemble_pred = np.average(predictions, weights=weights)
 
+        # Build model contributions dict
+        model_contributions = {}
+        model_keys = [k for k in self.trained_models.keys() if k in ['xgboost', 'prophet', 'gbm']]
+        for i, key in enumerate(model_keys[:len(predictions)]):
+            model_contributions[key] = float(predictions[i])
+
         # Calculate confidence metrics
         current_price = float(df['close'].iloc[-1])
         pred_change = (ensemble_pred - current_price) / current_price
@@ -280,7 +486,8 @@ class PricePredictionEngine:
             'confidence_interval': (float(ci_lower), float(ci_upper)),
             'horizon': horizon,
             'timestamp': datetime.now(),
-            'models_used': list(self.trained_models.keys())
+            'models_used': list(self.trained_models.keys()),
+            'model_contributions': model_contributions
         }
 
     def _predict_xgboost(self, df: pd.DataFrame) -> Optional[float]:
