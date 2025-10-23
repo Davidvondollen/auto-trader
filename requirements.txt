@@ -32,7 +32,7 @@ scipy>=1.11.0,<1.12.0
 # News & Sentiment
 newsapi-python==0.2.7
 beautifulsoup4==4.12.0
-feedparser==6.0.10
+# feedparser==6.0.11  # Requires sgmllib3k which has build issues on Python 3.11
 vaderSentiment==3.3.2
 
 # Trading & Brokers
