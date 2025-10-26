@@ -30,6 +30,7 @@ class TechnicalIndicatorEngine:
         self.timeframes = timeframes
         self.data_cache = {}
         self.last_update = {}
+        self.last_fetch = {}
 
         # Initialize crypto exchange for crypto symbols
         self.crypto_exchange = None
@@ -58,7 +59,7 @@ class TechnicalIndicatorEngine:
         Returns:
             DataFrame with OHLCV data
         """
-        cache_key = f"{symbol}_{timeframe}_{source}"
+        cache_key = f"{symbol}_{timeframe}"
 
         # Check cache (refresh if older than timeframe interval)
         if cache_key in self.data_cache:
