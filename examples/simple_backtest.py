@@ -30,11 +30,11 @@ def simple_moving_average_strategy(data, fast_period=20, slow_period=50):
         return {'action': 'hold'}
 
     # Calculate moving averages
-    fast_ma = data['close'].rolling(fast_period).mean().iloc[-1]
-    slow_ma = data['close'].rolling(slow_period).mean().iloc[-1]
+    fast_ma = data['AAPL'].rolling(fast_period).mean().iloc[-1]
+    slow_ma = data['AAPL'].rolling(slow_period).mean().iloc[-1]
 
-    prev_fast_ma = data['close'].rolling(fast_period).mean().iloc[-2]
-    prev_slow_ma = data['close'].rolling(slow_period).mean().iloc[-2]
+    prev_fast_ma = data['AAPL'].rolling(fast_period).mean().iloc[-2]
+    prev_slow_ma = data['AAPL'].rolling(slow_period).mean().iloc[-2]
 
     # Bullish crossover
     if fast_ma > slow_ma and prev_fast_ma <= prev_slow_ma:
@@ -66,6 +66,11 @@ def main():
     df = engine.fetch_data('AAPL', '1d', lookback=252)
     df = engine.calculate_indicators(df)
     print(f"   Loaded {len(df)} days of data")
+
+    # Check if data is valid before proceeding
+    if df.empty or 'close' not in df.columns:
+        print("\nNo data available for backtest. Exiting.")
+        return
 
     # Prepare data for backtest
     data = df[['close']].copy()
