@@ -136,10 +136,10 @@ class AgenticTradingSystem:
                 self.broker = AlpacaBroker(api_key, secret_key, paper=paper_mode)
                 self.order_manager = OrderManager(self.broker)
 
-                if self.broker.connect():
+                if self._connect_broker_with_retry():
                     logger.info("✓ Broker connected (Alpaca)")
                 else:
-                    logger.error("✗ Failed to connect to broker")
+                    logger.error("✗ Failed to connect to broker after retries")
                     self.broker = None
                     self.order_manager = None
             else:
@@ -253,6 +253,26 @@ class AgenticTradingSystem:
 
         logger.info("Backtest complete\n")
         return results
+
+    def _connect_broker_with_retry(self, max_retries: int = 3, backoff: float = 2.0) -> bool:
+        """
+        Attempt broker connection with exponential backoff.
+
+        Args:
+            max_retries: Maximum connection attempts
+            backoff: Base backoff seconds (doubled each retry)
+
+        Returns:
+            True if connected successfully
+        """
+        for attempt in range(1, max_retries + 1):
+            if self.broker.connect():
+                return True
+            if attempt < max_retries:
+                wait = backoff * (2 ** (attempt - 1))
+                logger.warning(f"Broker connection attempt {attempt} failed, retrying in {wait:.0f}s...")
+                time.sleep(wait)
+        return False
 
     def run(self) -> None:
         """
@@ -504,7 +524,7 @@ class AgenticTradingSystem:
             'is_running': self.is_running,
             'mode': 'paper' if self.config.is_paper_trading() else 'live',
             'symbols': self.config.get_symbols(),
-            'broker_connected': self.broker is not None and self.broker.connect(),
+            'broker_connected': self.broker is not None and self.broker.is_connected,
         }
 
         if self.broker:
