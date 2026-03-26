@@ -265,6 +265,311 @@ class BacktestEngine:
 
         return results
 
+    def walk_forward_analysis(
+        self,
+        data: pd.DataFrame,
+        strategy_func: Callable,
+        strategy_params: Optional[Dict] = None,
+        train_period: int = 252,
+        test_period: int = 63,
+        step_size: int = 21,
+        retrain: bool = True
+    ) -> Dict:
+        """
+        Perform walk-forward analysis for out-of-sample validation.
+
+        This method trains on a rolling window and tests on the next period,
+        providing realistic out-of-sample performance estimates.
+
+        Args:
+            data: Historical market data
+            strategy_func: Strategy function that can be trained
+            strategy_params: Base parameters for strategy
+            train_period: Number of days for training window (default: 252 = 1 year)
+            test_period: Number of days for testing window (default: 63 = 3 months)
+            step_size: Days to step forward each iteration (default: 21 = 1 month)
+            retrain: Whether to retrain on each window
+
+        Returns:
+            Dictionary with walk-forward results
+        """
+        logger.info(f"Starting walk-forward analysis: train={train_period}, "
+                   f"test={test_period}, step={step_size}")
+
+        all_results = []
+        window_results = []
+
+        # Calculate total windows
+        total_length = len(data)
+        start_idx = 0
+        window_num = 0
+
+        while start_idx + train_period + test_period <= total_length:
+            window_num += 1
+
+            # Define train and test periods
+            train_start = start_idx
+            train_end = start_idx + train_period
+            test_start = train_end
+            test_end = min(test_start + test_period, total_length)
+
+            train_data = data.iloc[train_start:train_end]
+            test_data = data.iloc[test_start:test_end]
+
+            logger.info(f"\nWindow {window_num}: "
+                       f"Train[{train_start}:{train_end}] "
+                       f"Test[{test_start}:{test_end}]")
+
+            # Train strategy on training data if needed
+            trained_params = strategy_params.copy() if strategy_params else {}
+            if retrain and hasattr(strategy_func, 'train'):
+                try:
+                    trained_params = strategy_func.train(train_data, trained_params)
+                except Exception as e:
+                    logger.warning(f"Training failed for window {window_num}: {e}")
+
+            # Test on out-of-sample data
+            # Reset state for this test window
+            self.cash = self.initial_cash
+            self.positions = {}
+            self.portfolio_values = []
+            self.trades = []
+            self.current_step = 0
+
+            # Run backtest on test period
+            for i in range(len(test_data)):
+                self.current_step = i
+
+                # Get historical data up to current point
+                # Include all train data + test data up to now
+                historical_data = pd.concat([
+                    train_data,
+                    test_data.iloc[:i+1]
+                ])
+
+                if len(historical_data) < 20:
+                    continue
+
+                # Generate signal
+                try:
+                    signal = strategy_func(historical_data, **trained_params)
+                except Exception as e:
+                    logger.error(f"Strategy error at step {i}: {e}")
+                    signal = {'action': 'hold'}
+
+                # Execute signal
+                if signal and signal.get('action') != 'hold':
+                    self._execute_trade(signal, test_data.iloc[i])
+
+                # Calculate portfolio value
+                portfolio_value = self._calculate_portfolio_value(test_data.iloc[i])
+                self.portfolio_values.append({
+                    'timestamp': test_data.index[i] if hasattr(test_data, 'index') else i,
+                    'value': portfolio_value,
+                    'cash': self.cash,
+                    'positions_value': portfolio_value - self.cash
+                })
+
+            # Calculate window metrics
+            window_result = self._generate_results(test_data)
+            window_result['window_num'] = window_num
+            window_result['train_start'] = train_start
+            window_result['train_end'] = train_end
+            window_result['test_start'] = test_start
+            window_result['test_end'] = test_end
+
+            window_results.append(window_result)
+
+            logger.info(f"Window {window_num} Results: "
+                       f"Return={window_result['total_return']:.2%}, "
+                       f"Sharpe={window_result['sharpe_ratio']:.2f}")
+
+            # Move to next window
+            start_idx += step_size
+
+        # Aggregate results across all windows
+        returns = [r['total_return'] for r in window_results]
+        sharpes = [r['sharpe_ratio'] for r in window_results]
+        drawdowns = [r['max_drawdown'] for r in window_results]
+
+        aggregate_results = {
+            'num_windows': len(window_results),
+            'avg_return': float(np.mean(returns)),
+            'std_return': float(np.std(returns)),
+            'avg_sharpe': float(np.mean(sharpes)),
+            'avg_drawdown': float(np.mean(drawdowns)),
+            'win_rate_windows': float(sum(1 for r in returns if r > 0) / len(returns)),
+            'best_return': float(max(returns)),
+            'worst_return': float(min(returns)),
+            'window_results': window_results,
+            'returns_by_window': returns,
+            'sharpes_by_window': sharpes
+        }
+
+        logger.info(f"\n{'='*60}")
+        logger.info("Walk-Forward Analysis Summary")
+        logger.info(f"{'='*60}")
+        logger.info(f"Windows: {aggregate_results['num_windows']}")
+        logger.info(f"Avg Return: {aggregate_results['avg_return']:.2%} ± {aggregate_results['std_return']:.2%}")
+        logger.info(f"Avg Sharpe: {aggregate_results['avg_sharpe']:.2f}")
+        logger.info(f"Win Rate: {aggregate_results['win_rate_windows']:.1%}")
+        logger.info(f"{'='*60}")
+
+        return aggregate_results
+
+    def calculate_market_impact(
+        self,
+        order_size: float,
+        avg_daily_volume: float,
+        volatility: float = 0.02
+    ) -> float:
+        """
+        Calculate market impact using square-root model.
+
+        Based on the Almgren-Chriss market impact model.
+
+        Args:
+            order_size: Size of order in shares
+            avg_daily_volume: Average daily volume
+            volatility: Daily volatility (default 2%)
+
+        Returns:
+            Market impact as percentage of price
+        """
+        if avg_daily_volume == 0:
+            return 0.0
+
+        # Participation rate (what fraction of daily volume)
+        participation_rate = order_size / avg_daily_volume
+
+        # Square-root impact model
+        # impact = volatility * sqrt(participation_rate)
+        impact = volatility * np.sqrt(participation_rate)
+
+        # Cap impact at reasonable level
+        impact = min(impact, 0.1)  # Max 10% impact
+
+        return impact
+
+    def _execute_trade_with_market_impact(
+        self,
+        signal: Dict,
+        current_prices: pd.Series,
+        volumes: Optional[pd.Series] = None
+    ) -> None:
+        """
+        Execute trade with realistic market impact modeling.
+
+        Args:
+            signal: Trade signal
+            current_prices: Current prices
+            volumes: Current volumes (for impact calculation)
+        """
+        symbol = signal.get('symbol')
+        action = signal.get('action')
+        quantity = signal.get('quantity', 1.0)
+
+        if not symbol or symbol not in current_prices.index:
+            return
+
+        price = current_prices[symbol]
+
+        if action == 'buy':
+            # Calculate order size
+            max_spend = self.cash * quantity
+            # Estimate shares before calculating impact
+            estimated_shares = max_spend / (price * (1 + self.commission))
+
+            # Calculate market impact if volume data available
+            if volumes is not None and symbol in volumes.index:
+                avg_volume = volumes[symbol]
+                market_impact = self.calculate_market_impact(
+                    estimated_shares,
+                    avg_volume
+                )
+            else:
+                market_impact = 0.0
+
+            # Total slippage = base slippage + market impact
+            total_slippage = self.slippage + market_impact
+            effective_price = price * (1 + total_slippage)
+
+            # Recalculate shares with impact
+            shares = int(max_spend / (effective_price * (1 + self.commission)))
+
+            if shares > 0:
+                cost = shares * effective_price * (1 + self.commission)
+
+                if cost <= self.cash:
+                    self.cash -= cost
+
+                    if symbol in self.positions:
+                        old_shares = self.positions[symbol]['shares']
+                        old_cost = self.positions[symbol]['avg_price']
+                        new_avg = ((old_shares * old_cost) + (shares * effective_price)) / (old_shares + shares)
+
+                        self.positions[symbol]['shares'] += shares
+                        self.positions[symbol]['avg_price'] = new_avg
+                    else:
+                        self.positions[symbol] = {
+                            'shares': shares,
+                            'avg_price': effective_price
+                        }
+
+                    self.trades.append({
+                        'step': self.current_step,
+                        'symbol': symbol,
+                        'action': 'buy',
+                        'shares': shares,
+                        'price': effective_price,
+                        'cost': cost,
+                        'market_impact': market_impact
+                    })
+
+        elif action == 'sell':
+            if symbol not in self.positions:
+                return
+
+            shares_held = self.positions[symbol]['shares']
+            shares_to_sell = int(shares_held * quantity)
+
+            # Calculate market impact
+            if volumes is not None and symbol in volumes.index:
+                avg_volume = volumes[symbol]
+                market_impact = self.calculate_market_impact(
+                    shares_to_sell,
+                    avg_volume
+                )
+            else:
+                market_impact = 0.0
+
+            # Total slippage
+            total_slippage = self.slippage + market_impact
+            effective_price = price * (1 - total_slippage)
+
+            if shares_to_sell > 0:
+                proceeds = shares_to_sell * effective_price * (1 - self.commission)
+                self.cash += proceeds
+
+                avg_cost = self.positions[symbol]['avg_price']
+                profit = shares_to_sell * (effective_price - avg_cost)
+
+                self.positions[symbol]['shares'] -= shares_to_sell
+
+                if self.positions[symbol]['shares'] <= 0:
+                    del self.positions[symbol]
+
+                self.trades.append({
+                    'step': self.current_step,
+                    'symbol': symbol,
+                    'action': 'sell',
+                    'shares': shares_to_sell,
+                    'price': effective_price,
+                    'proceeds': proceeds,
+                    'profit': profit,
+                    'market_impact': market_impact
+                })
+
     def plot_results(self, results: Dict, save_path: Optional[str] = None) -> None:
         """
         Plot backtest results.
