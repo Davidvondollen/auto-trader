@@ -103,9 +103,11 @@ Initial Capital:    $10,000.00
 Final Value:        $12,345.67
 Total Return:       23.46%
 Sharpe Ratio:       1.85
+Sortino Ratio:      2.41
 Max Drawdown:       -8.23%
 Number of Trades:   42
 Win Rate:           58.33%
+Profit Factor:      1.76
 ================================================================================
 ```
 
@@ -168,7 +170,8 @@ auto-trader/
 │   ├── models/
 │   │   ├── price_predictor.py       # Ensemble price prediction
 │   │   ├── rl_environment.py        # RL trading environment
-│   │   └── rl_trainer.py            # RL training system
+│   │   ├── rl_trainer.py            # RL training system
+│   │   └── feature_engineering.py  # Advanced feature engineering
 │   ├── strategies/
 │   │   └── llm_strategy_generator.py # LLM-based strategy generation
 │   ├── execution/
@@ -411,7 +414,7 @@ assets:
 strategies:
   llm:
     provider: anthropic           # or openai
-    model: claude-sonnet-4-5
+    model: claude-sonnet-4-6
     temperature: 0.7
     max_strategies: 5
   rl:

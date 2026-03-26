@@ -157,6 +157,7 @@ class AlpacaBroker(BrokerInterface):
         self.paper = paper
         self.api_key = api_key
         self.secret_key = secret_key
+        self._connected = False
 
         base_url = ("https://paper-api.alpaca.markets" if paper
                    else "https://api.alpaca.markets")
@@ -172,14 +173,24 @@ class AlpacaBroker(BrokerInterface):
         logger.info(f"Initialized Alpaca broker in {mode} mode")
 
     def connect(self) -> bool:
-        """Test connection to Alpaca."""
+        """Test connection to Alpaca and cache result."""
         try:
             account = self.api.get_account()
-            logger.info(f"Connected to Alpaca - Account status: {account.status}")
-            return account.status == 'ACTIVE'
+            self._connected = account.status == 'ACTIVE'
+            if self._connected:
+                logger.info(f"Connected to Alpaca - Account status: {account.status}")
+            else:
+                logger.warning(f"Alpaca account not active - status: {account.status}")
+            return self._connected
         except Exception as e:
             logger.error(f"Failed to connect to Alpaca: {e}")
+            self._connected = False
             return False
+
+    @property
+    def is_connected(self) -> bool:
+        """Return cached connection state without making an API call."""
+        return self._connected
 
     def place_order(
         self,
