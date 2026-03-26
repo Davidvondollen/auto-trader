@@ -270,14 +270,15 @@ class RLTrainingSystem:
         final_portfolio_values = []
 
         for episode in range(n_episodes):
-            obs = env.reset()
-            done = False
+            obs, info = env.reset()
+            terminated = False
+            truncated = False
             episode_reward = 0
             episode_length = 0
 
-            while not done:
+            while not (terminated or truncated):
                 action, _ = self.model.predict(obs, deterministic=deterministic)
-                obs, reward, done, info = env.step(action)
+                obs, reward, terminated, truncated, info = env.step(action)
                 episode_reward += reward
                 episode_length += 1
 
