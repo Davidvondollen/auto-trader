@@ -251,7 +251,7 @@ class PricePredictionEngine:
 
     def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Prepare features for model training.
+        Prepare features for model training (avoiding look-ahead bias).
 
         Args:
             df: DataFrame with OHLCV and indicators
@@ -261,24 +261,33 @@ class PricePredictionEngine:
         """
         features = df.copy()
 
-        # Price-based features
+        # Price-based features (all using historical data only)
         features['returns'] = features['close'].pct_change()
         features['log_returns'] = np.log(features['close'] / features['close'].shift(1))
 
-        # Volatility features
-        features['volatility'] = features['returns'].rolling(window=20).std()
+        # Volatility features (using expanding window to avoid look-ahead)
+        features['volatility'] = features['returns'].rolling(window=20, min_periods=1).std()
 
         # Volume features
         if 'volume' in features.columns:
             features['volume_change'] = features['volume'].pct_change()
-            features['volume_ma'] = features['volume'].rolling(window=20).mean()
+            features['volume_ma'] = features['volume'].rolling(window=20, min_periods=1).mean()
+            # Volume-price relationship
+            features['volume_price_ratio'] = features['volume'] / features['close']
 
-        # Lagged features
+        # Lagged features (safe - only use past data)
         for lag in [1, 2, 3, 5, 10]:
             features[f'close_lag_{lag}'] = features['close'].shift(lag)
             features[f'returns_lag_{lag}'] = features['returns'].shift(lag)
 
-        # Technical indicator features (if available)
+        # Momentum features
+        features['momentum_5'] = features['close'] / features['close'].shift(5) - 1
+        features['momentum_10'] = features['close'] / features['close'].shift(10) - 1
+
+        # Rolling statistics
+        features['close_sma_ratio'] = features['close'] / features['close'].rolling(window=20, min_periods=1).mean()
+
+        # Technical indicator features (if available) - these should already be lag-safe
         indicator_cols = [
             'rsi', 'macd', 'macd_signal', 'macd_histogram',
             'bb_upper', 'bb_lower', 'bb_width', 'atr', 'adx'

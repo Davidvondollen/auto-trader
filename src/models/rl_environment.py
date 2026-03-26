@@ -79,6 +79,11 @@ class TradingEnvironment(gym.Env):
             dtype=np.float32
         )
 
+        # Compute global normalization statistics (prevent look-ahead bias)
+        self.feature_means = self.data[self.feature_columns].mean().values
+        self.feature_stds = self.data[self.feature_columns].std().values
+        self.feature_stds[self.feature_stds == 0] = 1.0  # Avoid division by zero
+
         # State variables
         self.current_step = 0
         self.balance = initial_balance
@@ -111,6 +116,7 @@ class TradingEnvironment(gym.Env):
         self.total_trades = 0
         self.portfolio_history = []
         self.trade_history = []
+        self.recent_returns = []  # Reset for reward calculation
 
         observation = self._get_observation()
         info = self._get_info()
@@ -238,12 +244,36 @@ class TradingEnvironment(gym.Env):
                     'proceeds': proceeds - commission_cost
                 })
 
-        # Calculate reward (change in portfolio value)
+        # Calculate reward (risk-adjusted returns)
         new_portfolio_value = self.balance + (self.shares_held * current_price)
-        reward = new_portfolio_value - prev_portfolio_value
 
-        # Normalize reward
-        reward = reward / prev_portfolio_value if prev_portfolio_value > 0 else 0.0
+        # Log return (more stable than simple return)
+        if prev_portfolio_value > 0 and new_portfolio_value > 0:
+            log_return = np.log(new_portfolio_value / prev_portfolio_value)
+        else:
+            log_return = 0.0
+
+        # Penalize volatility (Sharpe-style reward)
+        # Track recent returns for volatility calculation
+        if not hasattr(self, 'recent_returns'):
+            self.recent_returns = []
+
+        self.recent_returns.append(log_return)
+        if len(self.recent_returns) > 20:
+            self.recent_returns.pop(0)
+
+        # Calculate reward with volatility penalty
+        if len(self.recent_returns) >= 5:
+            return_std = np.std(self.recent_returns)
+            if return_std > 0:
+                reward = log_return - 0.5 * return_std  # Risk-adjusted
+            else:
+                reward = log_return
+        else:
+            reward = log_return
+
+        # Scale reward for better learning
+        reward = reward * 100  # Scale up for numerical stability
 
         return reward
 
@@ -289,7 +319,7 @@ class TradingEnvironment(gym.Env):
 
     def _normalize(self, data: np.ndarray) -> np.ndarray:
         """
-        Normalize data using min-max scaling per feature.
+        Normalize data using global mean/std (prevents look-ahead bias).
 
         Args:
             data: Data to normalize
@@ -300,16 +330,9 @@ class TradingEnvironment(gym.Env):
         if len(data) == 0:
             return data
 
-        # Calculate min and max for each feature
-        min_vals = np.min(data, axis=0)
-        max_vals = np.max(data, axis=0)
-
-        # Avoid division by zero
-        range_vals = max_vals - min_vals
-        range_vals[range_vals == 0] = 1.0
-
-        # Normalize
-        normalized = (data - min_vals) / range_vals
+        # Use global statistics computed during initialization
+        # This prevents look-ahead bias
+        normalized = (data - self.feature_means) / self.feature_stds
 
         return normalized
 

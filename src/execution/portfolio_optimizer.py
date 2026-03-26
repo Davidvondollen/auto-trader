@@ -64,8 +64,17 @@ class PortfolioOptimizer:
                 # Use historical mean returns
                 mu = expected_returns.mean_historical_return(price_data, frequency=252)
 
-            # Calculate covariance matrix
+            # Calculate covariance matrix with regularization
             S = risk_models.sample_cov(price_data, frequency=252)
+
+            # Check for singular matrix and add regularization if needed
+            try:
+                # Test if matrix is invertible
+                np.linalg.inv(S.values)
+            except np.linalg.LinAlgError:
+                logger.warning("Singular covariance matrix detected, adding regularization")
+                # Add small diagonal term for regularization
+                S = S + np.eye(len(S)) * 1e-5
 
             # Create efficient frontier
             ef = EfficientFrontier(mu, S)
