@@ -147,7 +147,7 @@ class LLMStrategyGenerator:
         self,
         api_key: str,
         provider: str = "anthropic",
-        model: str = "claude-sonnet-4-5-20250929",
+        model: str = "claude-sonnet-4-6",
         temperature: float = 0.7
     ):
         """

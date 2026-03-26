@@ -20,7 +20,9 @@ class BacktestEngine:
         self,
         initial_cash: float = 100000,
         commission: float = 0.001,
-        slippage: float = 0.0005
+        slippage: float = 0.0005,
+        risk_free_rate: float = 0.02,
+        annualization_factor: int = 252
     ):
         """
         Initialize backtest engine.
@@ -29,10 +31,14 @@ class BacktestEngine:
             initial_cash: Starting capital
             commission: Commission rate per trade
             slippage: Slippage rate per trade
+            risk_free_rate: Annual risk-free rate for Sharpe/Sortino (default 2%)
+            annualization_factor: Trading periods per year (252 for daily, 252*6.5 for hourly)
         """
         self.initial_cash = initial_cash
         self.commission = commission
         self.slippage = slippage
+        self.risk_free_rate = risk_free_rate
+        self.annualization_factor = annualization_factor
 
         # State
         self.cash = initial_cash
@@ -214,13 +220,15 @@ class BacktestEngine:
         # Calculate metrics
         total_return = (final_value - self.initial_cash) / self.initial_cash
 
-        # Sharpe ratio
+        # Sharpe ratio (annualized, with risk-free rate)
         returns = portfolio_df['returns'].dropna()
-        sharpe_ratio = np.sqrt(252) * returns.mean() / (returns.std() + 1e-8)
+        rf_per_period = self.risk_free_rate / self.annualization_factor
+        excess_returns = returns - rf_per_period
+        sharpe_ratio = np.sqrt(self.annualization_factor) * excess_returns.mean() / (returns.std() + 1e-8)
 
-        # Sortino ratio
-        downside_returns = returns[returns < 0]
-        sortino_ratio = np.sqrt(252) * returns.mean() / (downside_returns.std() + 1e-8)
+        # Sortino ratio (annualized, with risk-free rate)
+        downside_returns = returns[returns < rf_per_period]
+        sortino_ratio = np.sqrt(self.annualization_factor) * excess_returns.mean() / (downside_returns.std() + 1e-8)
 
         # Max drawdown
         cumulative = (1 + returns).cumprod()
@@ -240,7 +248,7 @@ class BacktestEngine:
             avg_loss = loss_trades['profit'].mean() if len(loss_trades) > 0 else 0
 
             profit_factor = (profit_trades['profit'].sum() /
-                           abs(loss_trades['profit'].sum())) if len(loss_trades) > 0 else 0
+                           abs(loss_trades['profit'].sum())) if len(loss_trades) > 0 else float('inf')
         else:
             win_rate = 0
             avg_profit = 0
@@ -692,7 +700,7 @@ class PerformanceAnalyzer:
                 avg_loss = abs(losing_trades['profit'].mean()) if len(losing_trades) > 0 else 0
 
                 profit_factor = (winning_trades['profit'].sum() /
-                               abs(losing_trades['profit'].sum())) if len(losing_trades) > 0 else 0
+                               abs(losing_trades['profit'].sum())) if len(losing_trades) > 0 else float('inf')
             else:
                 win_rate = 0
                 avg_win = 0

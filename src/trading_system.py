@@ -88,7 +88,7 @@ class AgenticTradingSystem:
         # LLM strategy generator
         if llm_api_key:
             llm_provider = self.config.get('strategies.llm.provider', 'anthropic')
-            llm_model = self.config.get('strategies.llm.model', 'claude-sonnet-4-5')
+            llm_model = self.config.get('strategies.llm.model', 'claude-sonnet-4-6')
             temperature = self.config.get('strategies.llm.temperature', 0.7)
 
             self.strategy_generator = LLMStrategyGenerator(
